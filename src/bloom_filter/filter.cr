@@ -1,13 +1,11 @@
 module BloomFilter
   class Filter
-    @bitsize : UInt32
-
     getter hash_num : UInt8
     getter bitsize : UInt32
     getter bitmap : Bytes
 
     def bytesize
-      @bitmap.size
+      bitmap.size
     end
 
     SEED_A = 0xdeadbeef_u32
@@ -53,58 +51,58 @@ module BloomFilter
     end
 
     def dump(io : IO)
-      io.write_byte(@hash_num)
+      io.write_byte(hash_num)
       IO::ByteFormat::BigEndian.encode(@bitmap.size, io)
       # TODO: is it possible write 4 byte chunks?
-      @bitmap.each { |byte| io.write_byte(byte) }
+      bitmap.each { |byte| io.write_byte(byte) }
       io
     end
 
     def ==(other : Filter)
-      self.bytesize == other.bytesize && @hash_num == other.hash_num && @bitmap == other.bitmap
+      self.bytesize == other.bytesize && self.hash_num == other.hash_num && self.bitmap == other.bitmap
     end
 
     # Get a union of two filters.
     def |(other : Filter) : Filter
       raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == @hash_num
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == self.hash_num
 
       union_bitmap = Bytes.new(bytesize) do |index|
-        @bitmap[index] | other.bitmap[index]
+        self.bitmap[index] | other.bitmap[index]
       end
-      Filter.new(self.bytesize, @hash_num, union_bitmap)
+      Filter.new(self.bytesize, hash_num, union_bitmap)
     end
 
     # Get intersection of two filters.
     def &(other : Filter) : Filter
       raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == @hash_num
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == self.hash_num
 
       intersection_bitmap = Bytes.new(bytesize) do |index|
-        @bitmap[index] & other.bitmap[index]
+        bitmap[index] & other.bitmap[index]
       end
-      Filter.new(self.bytesize, @hash_num, intersection_bitmap)
+      Filter.new(bytesize, hash_num, intersection_bitmap)
     end
 
     @[AlwaysInline]
     private def set(index : UInt32)
       item_index = index // 8
       bit_index = index % 8
-      @bitmap[item_index] = @bitmap[item_index] | (1 << bit_index)
+      bitmap[item_index] = bitmap[item_index] | (1 << bit_index)
     end
 
     @[AlwaysInline]
     private def set?(index : UInt32) : Bool
       item_index = index // 8
       bit_index = index % 8
-      @bitmap[item_index] & (1 << bit_index) != 0
+      bitmap[item_index] & (1 << bit_index) != 0
     end
 
     # Convert bitmap into string representation of bitmap with highlighted bits.
     # Should be used only for debugging and fun:)
     def visualize
       pairs = [] of String
-      four_bytes = @bitmap.map { |uint32| visualize_uint32(uint32) }
+      four_bytes = bitmap.map { |uint32| visualize_uint32(uint32) }
       four_bytes.each_slice(8) do |pair|
         pairs << pair.join(" ")
       end
@@ -123,14 +121,14 @@ module BloomFilter
     @[AlwaysInline]
     private def each_probe(str : String, &)
       ha, hb = two_hash(str)
-      pos = ha % (@bitsize - 1)       # @bitsize - 1 is always odd
-      delta = 1 + hb % (@bitsize - 3) # @bitsize - 3 is also odd
-      @hash_num.times do
+      pos = ha % (bitsize - 1)       # bitsize - 1 is always odd
+      delta = 1 + hb % (bitsize - 3) # bitsize - 3 is also odd
+      hash_num.times do
         yield pos
         pos += delta
-        pos -= @bitsize if pos >= @bitsize
+        pos -= bitsize if pos >= bitsize
         delta += 1
-        delta = 1 if delta == @bitsize - 1
+        delta = 1 if delta == bitsize - 1
       end
     end
 
