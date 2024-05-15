@@ -49,7 +49,7 @@ module BloomFilter
 
     # Saves bloom filter into binary file.
     def dump_file(file_path)
-      File.open(file_path, "w") { |fd| dump(fd) }
+      File.open(file_path, "w") { |io| dump(io) }
     end
 
     def dump(io : IO)
@@ -60,28 +60,28 @@ module BloomFilter
       io
     end
 
-    def ==(another : Filter)
-      self.bytesize == another.bytesize && @hash_num == another.hash_num && @bitmap == another.bitmap
+    def ==(other : Filter)
+      self.bytesize == other.bytesize && @hash_num == other.hash_num && @bitmap == other.bitmap
     end
 
     # Get a union of two filters.
-    def |(another : Filter) : Filter
-      raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
+    def |(other : Filter) : Filter
+      raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == @hash_num
 
       union_bitmap = Bytes.new(bytesize) do |index|
-        @bitmap[index] | another.bitmap[index]
+        @bitmap[index] | other.bitmap[index]
       end
       Filter.new(self.bytesize, @hash_num, union_bitmap)
     end
 
     # Get intersection of two filters.
-    def &(another : Filter) : Filter
-      raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
+    def &(other : Filter) : Filter
+      raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == @hash_num
 
       intersection_bitmap = Bytes.new(bytesize) do |index|
-        @bitmap[index] & another.bitmap[index]
+        @bitmap[index] & other.bitmap[index]
       end
       Filter.new(self.bytesize, @hash_num, intersection_bitmap)
     end
@@ -121,7 +121,7 @@ module BloomFilter
     end
 
     @[AlwaysInline]
-    private def each_probe(str : String)
+    private def each_probe(str : String, &)
       ha, hb = two_hash(str)
       pos = ha % (@bitsize - 1)       # @bitsize - 1 is always odd
       delta = 1 + hb % (@bitsize - 3) # @bitsize - 3 is also odd
@@ -157,7 +157,7 @@ module BloomFilter
 
     @[AlwaysInline]
     private def hswap(i : UInt32)
-      i = (i << 16) | (i >> 16)
+      (i << 16) | (i >> 16)
     end
   end
 end
