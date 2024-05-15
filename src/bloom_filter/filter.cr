@@ -14,13 +14,13 @@ module BloomFilter
     MULT_A = 0xb8b34b2d_u32
     MULT_B = 0x52c6a2d9_u32
 
-    def initialize(bytesize, hash_num, @bitmap : Bytes)
+    def initialize(bytesize, hash_num, @bitmap)
       @bitsize = (@bitmap.size * 8).to_u32
       @hash_num = hash_num.to_u8
     end
 
     def initialize(bytesize _bytesize, hash_num)
-      self.new _bytesize, hash_num, Bytes.new(bytesize.to_i32, 0_u8)
+      initialize _bytesize, hash_num, Bytes.new(_bytesize.to_i32, 0_u8)
     end
 
     # I used to load filter from file (see BloomFilter.load).
