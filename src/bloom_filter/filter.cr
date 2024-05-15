@@ -26,11 +26,11 @@ module BloomFilter
       @hash_num = io.read_byte.as UInt8
 
       # TODO: Is it possible to read 4 byte chunks?
-      size = IO::ByteFormat::BigEndian.decode(Int32, io)
+      size = IO::ByteFormat::NetworkEndian.decode(Int32, io)
       @bitmap = Bytes.new(size)
       io.read_fully(@bitmap).to_u32
 
-      @bitsize = @bytesize.to_u32 * 8
+      @bitsize = size.to_u32 * 8
     end
 
     def insert(str : String)
@@ -69,7 +69,7 @@ module BloomFilter
       raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
       raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
 
-      union_bitmap = Array(UInt8).new(bytesize) do |index|
+      union_bitmap = Bytes.new(bytesize) do |index|
         @bitmap[index] | another.bitmap[index]
       end
       Filter.new(self.bytesize, @hash_num, union_bitmap)
@@ -80,7 +80,7 @@ module BloomFilter
       raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
       raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
 
-      intersection_bitmap = Array(UInt8).new(bytesize) do |index|
+      intersection_bitmap = Bytes.new(bytesize) do |index|
         @bitmap[index] & another.bitmap[index]
       end
       Filter.new(self.bytesize, @hash_num, intersection_bitmap)
