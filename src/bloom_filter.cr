@@ -23,7 +23,7 @@ module BloomFilter
   end
 
   def self.load_file(file_path) : Filter
-    File.open(file_path, "r") { |fd| load(fd) }
+    File.open(file_path, "r") { |io| load(io) }
   end
 
   def self.load(io : IO) : Filter

@@ -1,11 +1,12 @@
 module BloomFilter
   class Filter
-    @bitsize : UInt32
-
     getter hash_num : UInt8
     getter bitsize : UInt32
-    getter bitmap : Array(UInt8)
-    getter bytesize : UInt32
+    getter bitmap : Bytes
+
+    def bytesize
+      bitmap.size
+    end
 
     SEED_A = 0xdeadbeef_u32
     SEED_B = 0x71fefeed_u32
@@ -13,7 +14,7 @@ module BloomFilter
     MULT_A = 0xb8b34b2d_u32
     MULT_B = 0x52c6a2d9_u32
 
-    def initialize(@bytesize, hash_num, @bitmap = Array(UInt8).new(bytesize.to_i32, 0_u8))
+    def initialize(bytesize, hash_num, @bitmap = Bytes.new(bytesize.to_i32, 0_u8))
       @bitsize = (bytesize * 8).to_u32
       @hash_num = hash_num.to_u8
     end
@@ -23,14 +24,11 @@ module BloomFilter
       @hash_num = io.read_byte.as UInt8
 
       # TODO: Is it possible to read 4 byte chunks?
-      @bytesize = 0_u32
-      @bitmap = Array(UInt8).new
-      while byte = io.read_byte
-        @bitmap << byte.to_u8
-        @bytesize += 1
-      end
+      size = IO::ByteFormat::NetworkEndian.decode(Int32, io)
+      @bitmap = Bytes.new(size)
+      io.read_fully(@bitmap).to_u32
 
-      @bitsize = @bytesize.to_u32 * 8
+      @bitsize = size.to_u32 * 8
     end
 
     def insert(str : String)
@@ -49,61 +47,62 @@ module BloomFilter
 
     # Saves bloom filter into binary file.
     def dump_file(file_path)
-      File.open(file_path, "w") { |fd| dump(fd) }
+      File.open(file_path, "w") { |io| dump(io) }
     end
 
     def dump(io : IO)
-      io.write_byte(@hash_num)
+      io.write_byte(hash_num)
+      IO::ByteFormat::BigEndian.encode(@bitmap.size, io)
       # TODO: is it possible write 4 byte chunks?
-      @bitmap.each { |byte| io.write_byte(byte) }
+      bitmap.each { |byte| io.write_byte(byte) }
       io
     end
 
-    def ==(another : Filter)
-      self.bytesize == another.bytesize && @hash_num == another.hash_num && @bitmap == another.bitmap
+    def ==(other : Filter)
+      self.bytesize == other.bytesize && self.hash_num == other.hash_num && self.bitmap == other.bitmap
     end
 
     # Get a union of two filters.
-    def |(another : Filter) : Filter
-      raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
+    def |(other : Filter) : Filter
+      raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == self.hash_num
 
-      union_bitmap = Array(UInt8).new(bytesize) do |index|
-        @bitmap[index] | another.bitmap[index]
+      union_bitmap = Bytes.new(bytesize) do |index|
+        self.bitmap[index] | other.bitmap[index]
       end
-      Filter.new(self.bytesize, @hash_num, union_bitmap)
+      Filter.new(self.bytesize, hash_num, union_bitmap)
     end
 
     # Get intersection of two filters.
-    def &(another : Filter) : Filter
-      raise(ArgumentError.new("Cannot unite filters of different size")) unless another.bytesize == self.bytesize
-      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless another.hash_num == @hash_num
+    def &(other : Filter) : Filter
+      raise(ArgumentError.new("Cannot unite filters of different size")) unless other.bytesize == self.bytesize
+      raise(ArgumentError.new("Cannot unite filters with different number of hash functions")) unless other.hash_num == self.hash_num
 
-      intersection_bitmap = Array(UInt8).new(bytesize) do |index|
-        @bitmap[index] & another.bitmap[index]
+      intersection_bitmap = Bytes.new(bytesize) do |index|
+        bitmap[index] & other.bitmap[index]
       end
-      Filter.new(self.bytesize, @hash_num, intersection_bitmap)
+      Filter.new(bytesize, hash_num, intersection_bitmap)
     end
 
     @[AlwaysInline]
     private def set(index : UInt32)
       item_index = index // 8
       bit_index = index % 8
-      @bitmap[item_index] = @bitmap[item_index] | (1 << bit_index)
+      bitmap[item_index] = bitmap[item_index] | (1 << bit_index)
     end
 
     @[AlwaysInline]
     private def set?(index : UInt32) : Bool
       item_index = index // 8
       bit_index = index % 8
-      @bitmap[item_index] & (1 << bit_index) != 0
+      bitmap[item_index] & (1 << bit_index) != 0
     end
 
     # Convert bitmap into string representation of bitmap with highlighted bits.
     # Should be used only for debugging and fun:)
     def visualize
       pairs = [] of String
-      four_bytes = @bitmap.map { |uint32| visualize_uint32(uint32) }
+      four_bytes = bitmap.map { |uint32| visualize_uint32(uint32) }
       four_bytes.each_slice(8) do |pair|
         pairs << pair.join(" ")
       end
@@ -120,16 +119,16 @@ module BloomFilter
     end
 
     @[AlwaysInline]
-    private def each_probe(str : String)
+    private def each_probe(str : String, &)
       ha, hb = two_hash(str)
-      pos = ha % (@bitsize - 1)       # @bitsize - 1 is always odd
-      delta = 1 + hb % (@bitsize - 3) # @bitsize - 3 is also odd
-      @hash_num.times do
+      pos = ha % (bitsize - 1)       # bitsize - 1 is always odd
+      delta = 1 + hb % (bitsize - 3) # bitsize - 3 is also odd
+      hash_num.times do
         yield pos
         pos += delta
-        pos -= @bitsize if pos >= @bitsize
+        pos -= bitsize if pos >= bitsize
         delta += 1
-        delta = 1 if delta == @bitsize - 1
+        delta = 1 if delta == bitsize - 1
       end
     end
 
@@ -156,7 +155,7 @@ module BloomFilter
 
     @[AlwaysInline]
     private def hswap(i : UInt32)
-      i = (i << 16) | (i >> 16)
+      (i << 16) | (i >> 16)
     end
   end
 end
